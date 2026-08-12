@@ -42,4 +42,15 @@ TOPLEVEL = tb
 COCOTB_TEST_MODULES = test
 
 # include cocotb's make rules to take care of the simulator setup
+# (this defines `sim` = compile + run the cocotb suite, and points `all` at it)
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+# Waveform viewer is opt-in -- never part of `make` / `make sim`.
+# surfer.cmd preloads the scope and variables; SURFER_STATE=<file.ron> instead
+# restores a layout saved from the GUI (File > Save state as...).
+SURFER_CMD ?= $(PWD)/surfer.cmd
+SURFER_ARGS = $(if $(SURFER_STATE),-s $(SURFER_STATE),-c $(SURFER_CMD))
+
+.PHONY: surf
+surf:
+	surfer $(SURFER_ARGS) $(PWD)/tb.fst
