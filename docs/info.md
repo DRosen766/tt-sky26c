@@ -26,7 +26,10 @@ The three coefficients are stored as their exponentials in Q0.16, not as rates.
 Conductance is `g = g_max * r`, and the synaptic current is
 `I_syn = g * (V - E_rev)`. That current, less a linear leak term, integrates the
 membrane potential `V`. When `V` crosses `V_threshold` the neuron fires: the
-spike output asserts for one cycle and `V` resets to zero.
+spike output asserts for one cycle, and `V` resets to zero on the *following*
+cycle rather than the same one. The crossing value is therefore observable on
+the V readout instead of being overwritten, and the neuron gets a one-cycle
+refractory period -- the spike output can never stay high for two cycles.
 
 `r` and everything derived from it are unsigned Q0.16; `V`, `E_rev` and the leak
 are unsigned Q0.8. Every rescale is a power-of-two slice with round-to-nearest,

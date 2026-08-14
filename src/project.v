@@ -95,12 +95,15 @@ module tt_um_sky26c (
 
       // Under clamp V is held: it plays no part in I_syn and must not drift.
       if (!voltage_clamp) begin
-        if (V_next > V_threshold) begin
-          V     <= 8'h00;  // fire and reset
-          spike <= 1'b1;
+        if (spike) begin
+          // Reset the cycle AFTER firing, so the threshold crossing itself is
+          // observable on the V readout instead of being overwritten by 0.
+          // Also gives a one-cycle refractory: spike cannot stay high.
+          V     <= 8'h00;
+          spike <= 1'b0;
         end else begin
           V     <= V_next;
-          spike <= 1'b0;
+          spike <= (V_next > V_threshold);
         end
       end else begin
         spike <= 1'b0;

@@ -203,8 +203,8 @@ def plot_v(steps, v_centred, out_spikes, in_spikes, path, title):
             linelengths=0.05,
             linewidths=1.2,
             colors=INK_MUTED,
-            alpha=0.55,
-            zorder=1,
+            alpha=0.7,
+            zorder=3,  # above the trace: the reset drop lands on the same x
         )
 
     # Steps, not a smooth line: the pin resolves V only to even codes, and
