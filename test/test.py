@@ -17,7 +17,7 @@ RESET_CYCLES = 1  # cycles rst_n is held low, counted against NUM_STEPS
 VOLTAGE_CLAMP_BIT = 6  # ui_in[6] is the voltage clamp input
 SPIKE_BIT = 7  # ui_in[7] is the pre-synaptic spike input
 
-V_THRESHOLD = 128  # Q0.8, must track V_threshold in project.v
+V_THRESHOLD = 192  # Q0.8, must track V_threshold in project.v
 t_spike = 10
 t_dur = 10  # cycles the pre-synaptic spike is held high
 

@@ -34,7 +34,7 @@ module tt_um_sky26c (
 
   localparam [7:0] g_max = 8'd255;
   localparam [7:0] reverse_potential = 8'd32;
-  localparam [7:0] V_threshold = 8'd128;  // Q0.8  threshold for spike output
+  localparam [7:0] V_threshold = 8'd192;  // Q0.8  threshold for spike output
   wire pre_synaptic_spike = ui_in[7];
   wire voltage_clamp = ui_in[6];  // 1 = hold V, so I_syn reports g directly
 
