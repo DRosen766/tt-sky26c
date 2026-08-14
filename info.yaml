@@ -44,13 +44,13 @@ pinout:
 
   # Bidirectional pins
   uio[0]: "spike_out"
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[1]: "V[1]"
+  uio[2]: "V[2]"
+  uio[3]: "V[3]"
+  uio[4]: "V[4]"
+  uio[5]: "V[5]"
+  uio[6]: "V[6]"
+  uio[7]: "V[7]"
 
 # Do not change!
 yaml_version: 6

@@ -143,6 +143,11 @@ async def run_trace(dut, spike_at, voltage_clamp = int(True)):
 
         await NextTimeStep()  # leave ReadOnly so the next iteration can drive ui_in
 
+    # All inputs arrive on ui_in, so the bidir bus is driven as output throughout.
+    assert dut.uio_oe.value == 0xFF, (
+        f"uio_oe must drive the whole bus, saw 0x{int(dut.uio_oe.value):02X}"
+    )
+
     return steps, i_raw, spikes, out_spikes, v_centred
 
 

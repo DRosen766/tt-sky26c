@@ -15,7 +15,9 @@ module tt_um_sky26c (
     input  wire       clk,      // clock
     input  wire       rst_n     // reset_n - low to reset
 );
-  assign uio_oe  = 8'h01;  // uio_in[0] is the only input used, so make it an output to avoid floating
+  // Every input comes from ui_in, so the whole bidir bus is driven as output
+  // and nothing contends for it.
+  assign uio_oe  = 8'hFF;
 
   // r and everything derived from it are unsigned Q0.16; V, E_rev and leak are
   // unsigned Q0.8. r needs the extra width or a slow tau decays by < 1/2 LSB
@@ -109,7 +111,7 @@ module tt_um_sky26c (
 `endif
   end
   assign uo_out = I_syn_q8;  // synaptic current, Q0.8
-  assign uio_out = {7'd0,spike};
+  assign uio_out = {V[7:1],spike};
 
   // Unused inputs and the deliberate Q0.16 -> Q0.8 discards.
   wire _unused = &{ena, uio_in, ui_in[5:0], r_mul_rnd[15:0], g_rnd[7:0],

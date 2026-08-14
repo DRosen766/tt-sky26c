@@ -68,9 +68,16 @@ stay at zero), and unclamped firing. It writes current traces and a spike raster
 to `test/output/`.
 
 To drive the design directly: hold `ui[7]` high for the cycles a pre-synaptic
-spike is present, set `ui[6]` to choose clamped (conductance readout) or
-unclamped (full membrane dynamics) mode, and watch `uo_out` for the synaptic
-current and `uio_out[0]` for output spikes.
+spike is present, and set `ui[6]` to choose clamped (conductance readout) or
+unclamped (full membrane dynamics) mode. All inputs arrive on `ui_in`, so the
+bidirectional bus is driven as output at all times.
+
+`uo_out` carries the synaptic current in Q0.8. `uio_out` carries
+`{V[7:1], spike}`: bit 0 is the post-synaptic spike, and bits 7:1 are the
+membrane potential with its least significant bit dropped. V therefore reads
+back only to even Q0.8 codes -- half its internal resolution -- so a reader
+should add half a step to centre the quantization error at +/-0.5 LSB rather
+than biasing every sample low.
 
 ## External hardware
 
