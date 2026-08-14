@@ -258,3 +258,36 @@ async def test_no_spikes(dut):
     # Nothing drives r, so decaying zero stays zero. A non-zero sample here
     # means the reset didn't take, or an uninitialised term is leaking in.
     assert set(i_raw) == {0}, f"I_syn must stay 0 with no input, saw {sorted(set(i_raw))}"
+
+
+@cocotb.test()
+async def test_neuron_spikes(dut):
+    """Unclamped, under continuous drive, V must cross threshold and fire.
+
+    This checks only that spiking happens at all — not when, and not the
+    resulting train. Timing depends on LEAK, V_threshold and the driving-force
+    format, all still in flux; asserting a train here would just be churn.
+    """
+    dut._log.info("Start: unclamped, spike every timestep, expect the neuron to fire")
+
+    steps, i_raw, in_spikes, out_spikes = await run_trace(
+        dut, lambda *_: True, voltage_clamp=int(False)
+    )
+
+    png = plot_raster(
+        steps,
+        in_spikes,
+        out_spikes,
+        OUTPUT_DIR / "spike_raster.png",
+        "Spike raster — unclamped, pre-synaptic drive every cycle",
+    )
+    if png:
+        dut._log.info(f"wrote {png}")
+    else:
+        dut._log.warning("matplotlib not available - skipped raster")
+
+    assert any(out_spikes), (
+        f"neuron never spiked in {len(steps)} cycles "
+        f"(max I_syn={max(i_raw)}, V never reached V_threshold)"
+    )
+    dut._log.info(f"neuron fired {sum(out_spikes)} times in {len(steps)} cycles")
