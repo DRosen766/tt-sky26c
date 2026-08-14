@@ -166,8 +166,12 @@ def v_from_uio(uio):
     return raw_even, raw_even + 0.5
 
 
-def plot_v(steps, v_centred, out_spikes, path, title):
-    """Save the membrane potential over time, reconstructed from 7 of its 8 bits."""
+def plot_v(steps, v_centred, out_spikes, in_spikes, path, title):
+    """Save the membrane potential over time, reconstructed from 7 of its 8 bits.
+
+    A pre-synaptic raster shares the x axis underneath, so the input driving
+    each charge phase lines up with the response above it.
+    """
     try:
         import matplotlib
 
@@ -176,9 +180,17 @@ def plot_v(steps, v_centred, out_spikes, path, title):
     except ImportError:
         return None
 
-    fig, ax = plt.subplots(figsize=(8, 4), dpi=140)
+    fig, (ax, ax_r) = plt.subplots(
+        2,
+        1,
+        figsize=(8, 4.6),
+        dpi=140,
+        sharex=True,
+        gridspec_kw={"height_ratios": [4, 1], "hspace": 0.12},
+    )
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
+    ax_r.set_facecolor(SURFACE)
 
     # Fired cycles as a tick strip, not shaded spans: under heavy drive the
     # neuron fires nearly every cycle and per-cycle spans would fill the axes.
@@ -208,18 +220,36 @@ def plot_v(steps, v_centred, out_spikes, path, title):
     ax.axhline(V_THRESHOLD / 256, color=INK_MUTED, lw=1, ls="--", alpha=0.6, zorder=1)
 
     ax.set_title(title, color=INK, fontsize=11, loc="left")
-    ax.set_xlabel("clock cycle", color=INK_MUTED, fontsize=9)
     ax.set_ylabel("V  (Q0.8, raw/256)", color=INK_MUTED, fontsize=9)
     ax.set_ylim(0, 1.08)
     ax.set_xlim(min(steps) - 0.5, max(steps) + 0.5)
     ax.grid(axis="y", color=INK_MUTED, alpha=0.15, lw=0.8)
     ax.set_axisbelow(True)
-    for side in ("top", "right"):
+    for side in ("top", "right", "bottom"):
         ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(INK_MUTED)
-        ax.spines[side].set_alpha(0.4)
-    ax.tick_params(colors=INK_MUTED, labelsize=8)
+    ax.spines["left"].set_color(INK_MUTED)
+    ax.spines["left"].set_alpha(0.4)
+    ax.tick_params(colors=INK_MUTED, labelsize=8, bottom=False)
+
+    # Pre-synaptic raster, sharing the x axis with the trace above.
+    ax_r.eventplot(
+        [s for s, v in zip(steps, in_spikes) if v],
+        lineoffsets=0,
+        linelengths=0.8,
+        linewidths=1.4,
+        colors=INK_MUTED,
+    )
+    ax_r.set_ylabel("pre-syn", color=INK_MUTED, fontsize=8, rotation=0, ha="right", va="center")
+    ax_r.set_ylim(-0.6, 0.6)
+    ax_r.set_yticks([])
+    ax_r.set_xlabel("clock cycle", color=INK_MUTED, fontsize=9)
+    ax_r.grid(axis="x", color=INK_MUTED, alpha=0.12, lw=0.8)
+    ax_r.set_axisbelow(True)
+    for side in ("top", "right", "left"):
+        ax_r.spines[side].set_visible(False)
+    ax_r.spines["bottom"].set_color(INK_MUTED)
+    ax_r.spines["bottom"].set_alpha(0.4)
+    ax_r.tick_params(colors=INK_MUTED, labelsize=8, left=False)
 
     from matplotlib.lines import Line2D
 
@@ -389,6 +419,7 @@ async def test_neuron_spikes(dut):
                 steps,
                 v_centred,
                 out_spikes,
+                in_spikes,
                 OUTPUT_DIR / "v_trace_every_step.png",
                 "Membrane potential V — unclamped, drive every cycle "
                 "(7-bit readout, ±½ LSB)",
@@ -418,7 +449,7 @@ async def test_v_readout_burst(dut):
     """
     dut._log.info("Start: unclamped burst, trace the membrane potential")
 
-    steps, _, _, out_spikes, v_centred = await run_trace(
+    steps, _, in_spikes, out_spikes, v_centred = await run_trace(
         dut,
         lambda step: t_spike <= step < t_spike + t_dur,
         voltage_clamp=int(False),
@@ -428,6 +459,7 @@ async def test_v_readout_burst(dut):
         steps,
         v_centred,
         out_spikes,
+        in_spikes,
         OUTPUT_DIR / "v_trace.png",
         f"Membrane potential V — {t_dur}-cycle burst at t={t_spike} "
         "(7-bit readout, ±½ LSB)",
