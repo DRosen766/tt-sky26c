@@ -17,7 +17,13 @@
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
-  "CLOCK_PERIOD": 20,
+  "//": "Raised from 20ns: the r -> g -> I_syn multiply chain is combinational to",
+  "//": "the output pin and measures ~35ns at tt_025C_1v80, so 20ns missed setup by",
+  "//": "15ns on uo_out and the resizer could not repair it. The synapse does one",
+  "//": "update per timestep and Δt is milliseconds of biological time, so 20MHz is",
+  "//": "already ~4 orders of magnitude more clock than the model needs -- cheaper",
+  "//": "than spending flops on pipeline registers in a 2-tile budget.",
+  "CLOCK_PERIOD": 50,
 
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
