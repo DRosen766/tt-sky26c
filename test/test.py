@@ -98,8 +98,9 @@ def plot_i(steps, i_raw, spikes, path, title):
 async def run_trace(dut, spike_at, voltage_clamp = int(True)):
     """Reset the DUT, then clock NUM_STEPS cycles driving spikes per spike_at(step).
 
-    Returns (steps, i_raw, spikes). uo_out carries the synaptic current
-    I_syn = g * (V - E_rev) in Q0.8, so the raw 8-bit value is I_syn / 256.
+    Returns (steps, i_raw, spikes, out_spikes). uo_out carries the synaptic
+    current I_syn = g * (V - E_rev) in Q0.8, so the raw 8-bit value is
+    I_syn / 256. uio_out[0] is the post-synaptic spike output.
     """
     # Set the clock period to 1 ms (1 kHz)
     clock = Clock(dut.clk, 1 / OVERALL_FREQUENCY, unit="sec")
@@ -114,7 +115,7 @@ async def run_trace(dut, spike_at, voltage_clamp = int(True)):
     await ClockCycles(dut.clk, RESET_CYCLES)
     dut.rst_n.value = 1
 
-    steps, i_raw, spikes = [], [], []
+    steps, i_raw, spikes, out_spikes = [], [], [], []
     for step in range(1, NUM_STEPS - RESET_CYCLES + 1):
         spike = 1 if spike_at(step) else 0
         dut.ui_in.value = spike << SPIKE_BIT | voltage_clamp << VOLTAGE_CLAMP_BIT
@@ -123,18 +124,67 @@ async def run_trace(dut, spike_at, voltage_clamp = int(True)):
         await ReadOnly()  # let the NBA on `r` settle before sampling
 
         i_syn = int(dut.uo_out.value)
-        dut._log.info(f"step {step:3d}  spike={spike}  I_syn={i_syn:3d}  ({i_syn / 256:.3f})")
+        out_spike = int(dut.uio_out.value) & 1
+        dut._log.info(
+            f"step {step:3d}  spike={spike}  I_syn={i_syn:3d}  ({i_syn / 256:.3f})"
+            f"  out_spike={out_spike}"
+        )
         steps.append(step)
         i_raw.append(i_syn)
         spikes.append(spike)
+        out_spikes.append(out_spike)
 
         await NextTimeStep()  # leave ReadOnly so the next iteration can drive ui_in
 
-    # Bidir pins are unused: held as inputs, driving 0.
-    assert dut.uio_oe.value == 0
-    assert dut.uio_out.value == 0
+    # uio_out[0] is the spike output; the rest are tied low and driven as inputs.
+    assert dut.uio_oe.value == 0x01
+    assert int(dut.uio_out.value) >> 1 == 0
 
-    return steps, i_raw, spikes
+    return steps, i_raw, spikes, out_spikes
+
+
+def plot_raster(steps, in_spikes, out_spikes, path, title):
+    """Save a two-row raster: pre-synaptic input vs. post-synaptic output."""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")  # headless: no display in CI or the devcontainer
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+
+    fig, ax = plt.subplots(figsize=(8, 2.4), dpi=140)
+    fig.patch.set_facecolor(SURFACE)
+    ax.set_facecolor(SURFACE)
+
+    rows = [
+        ("pre-synaptic in", in_spikes, INK_MUTED, 1),
+        ("post-synaptic out", out_spikes, SERIES_I, 0),
+    ]
+    for label, train, color, y in rows:
+        ticks = [s for s, v in zip(steps, train) if v]
+        ax.eventplot(
+            ticks, lineoffsets=y, linelengths=0.7, linewidths=1.6, colors=color
+        )
+
+    ax.set_yticks([r[3] for r in rows], [r[0] for r in rows])
+    ax.set_ylim(-0.6, 1.6)
+    ax.set_xlim(min(steps) - 0.5, max(steps) + 0.5)
+    ax.set_title(title, color=INK, fontsize=11, loc="left")
+    ax.set_xlabel("clock cycle", color=INK_MUTED, fontsize=9)
+    ax.grid(axis="x", color=INK_MUTED, alpha=0.12, lw=0.8)
+    ax.set_axisbelow(True)
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color(INK_MUTED)
+    ax.spines["bottom"].set_alpha(0.4)
+    ax.tick_params(colors=INK_MUTED, labelsize=8, left=False)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+    return path
 
 
 def save_plot(dut, steps, i_raw, spikes, name, title):
@@ -151,7 +201,7 @@ async def test_single_spike(dut):
     """One spike, then free decay — the impulse response."""
     dut._log.info("Start: single spike, then watch the synaptic current decay")
 
-    steps, i_raw, spikes = await run_trace(
+    steps, i_raw, spikes, _ = await run_trace(
         dut, lambda step: t_spike <= step < t_spike + t_dur
     )
 
@@ -170,7 +220,7 @@ async def test_spike_every_step(dut):
     """Spike on every timestep — drives r to its saturating steady state."""
     dut._log.info("Start: spike every timestep, watch the synaptic current saturate")
 
-    steps, i_raw, spikes = await run_trace(dut, lambda *_: True)
+    steps, i_raw, spikes, _ = await run_trace(dut, lambda *_: True)
 
     save_plot(
         dut,
@@ -194,7 +244,7 @@ async def test_no_spikes(dut):
     """No input at all — r starts at 0 from reset and must stay there."""
     dut._log.info("Start: no spikes, synaptic current must stay at rest")
 
-    steps, i_raw, spikes = await run_trace(dut, lambda *_: False)
+    steps, i_raw, spikes, _ = await run_trace(dut, lambda *_: False)
 
     save_plot(
         dut,

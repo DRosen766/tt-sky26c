@@ -87,16 +87,21 @@ module tt_um_sky26c (
     if (!rst_n) begin
       r <= 16'h0000;
       V <= 8'h00;
-
+      spike <= 1'b0;
     end else begin
       r <= r_next;
 
       // Under clamp V is held: it plays no part in I_syn and must not drift.
       if (!voltage_clamp) begin
-        if (V_next > V_threshold)
-          V <= 0;
-        else
-          V <= V_next;
+        if (V_next > V_threshold) begin
+          V     <= 8'h00;  // fire and reset
+          spike <= 1'b1;
+        end else begin
+          V     <= V_next;
+          spike <= 1'b0;
+        end
+      end else begin
+        spike <= 1'b0;
       end
     end
 `ifndef SYNTHESIS
