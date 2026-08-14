@@ -16,6 +16,8 @@ RESET_CYCLES = 1  # cycles rst_n is held low, counted against NUM_STEPS
 
 VOLTAGE_CLAMP_BIT = 6  # ui_in[6] is the voltage clamp input
 SPIKE_BIT = 7  # ui_in[7] is the pre-synaptic spike input
+
+V_THRESHOLD = 128  # Q0.8, must track V_threshold in project.v
 t_spike = 10
 t_dur = 10  # cycles the pre-synaptic spike is held high
 
@@ -25,6 +27,7 @@ SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
 INK_MUTED = "#52514e"
 SERIES_I = "#2a78d6"
+SERIES_V = "#c2570f"
 SPIKE_BAND = "#e8e8e4"
 
 
@@ -98,9 +101,10 @@ def plot_i(steps, i_raw, spikes, path, title):
 async def run_trace(dut, spike_at, voltage_clamp = int(True)):
     """Reset the DUT, then clock NUM_STEPS cycles driving spikes per spike_at(step).
 
-    Returns (steps, i_raw, spikes, out_spikes). uo_out carries the synaptic
-    current I_syn = g * (V - E_rev) in Q0.8, so the raw 8-bit value is
-    I_syn / 256. uio_out[0] is the post-synaptic spike output.
+    Returns (steps, i_raw, spikes, out_spikes, v_centred). uo_out carries the
+    synaptic current I_syn = g * (V - E_rev) in Q0.8, so the raw 8-bit value is
+    I_syn / 256. uio_out is {V[7:1], spike}: bit 0 is the post-synaptic spike
+    and the upper 7 bits are the membrane potential with its LSB dropped.
     """
     # Set the clock period to 1 ms (1 kHz)
     clock = Clock(dut.clk, 1 / OVERALL_FREQUENCY, unit="sec")
@@ -115,7 +119,7 @@ async def run_trace(dut, spike_at, voltage_clamp = int(True)):
     await ClockCycles(dut.clk, RESET_CYCLES)
     dut.rst_n.value = 1
 
-    steps, i_raw, spikes, out_spikes = [], [], [], []
+    steps, i_raw, spikes, out_spikes, v_centred = [], [], [], [], []
     for step in range(1, NUM_STEPS - RESET_CYCLES + 1):
         spike = 1 if spike_at(step) else 0
         dut.ui_in.value = spike << SPIKE_BIT | voltage_clamp << VOLTAGE_CLAMP_BIT
@@ -124,23 +128,113 @@ async def run_trace(dut, spike_at, voltage_clamp = int(True)):
         await ReadOnly()  # let the NBA on `r` settle before sampling
 
         i_syn = int(dut.uo_out.value)
-        out_spike = int(dut.uio_out.value) & 1
+        uio = int(dut.uio_out.value)
+        out_spike = uio & 1
+        v_even, v_mid = v_from_uio(uio)
         dut._log.info(
             f"step {step:3d}  spike={spike}  I_syn={i_syn:3d}  ({i_syn / 256:.3f})"
-            f"  out_spike={out_spike}"
+            f"  V~{v_even:3d}  out_spike={out_spike}"
         )
         steps.append(step)
         i_raw.append(i_syn)
         spikes.append(spike)
         out_spikes.append(out_spike)
+        v_centred.append(v_mid)
 
         await NextTimeStep()  # leave ReadOnly so the next iteration can drive ui_in
 
-    # uio_out[0] is the spike output; the rest are tied low and driven as inputs.
-    assert dut.uio_oe.value == 0x01
-    assert int(dut.uio_out.value) >> 1 == 0
+    return steps, i_raw, spikes, out_spikes, v_centred
 
-    return steps, i_raw, spikes, out_spikes
+
+def v_from_uio(uio):
+    """Recover the membrane potential from uio_out = {V[7:1], spike}.
+
+    V[0] never leaves the chip, so the pin can only resolve V to even Q0.8
+    codes: a 1-LSB step, half the resolution V actually has internally. Taking
+    the pin value as-is would bias every sample low by that lost bit, so add
+    back half a step -- the midpoint of the interval the true V must lie in.
+    Error is then +/-0.5 LSB and centred, instead of -1..0 and one-sided.
+
+    Returns (raw_even, centred) in Q0.8 units, the second a float.
+    """
+    raw_even = uio & 0xFE  # uio_out[7:1] shifted back into place; V[0] lost
+    return raw_even, raw_even + 0.5
+
+
+def plot_v(steps, v_centred, out_spikes, path, title):
+    """Save the membrane potential over time, reconstructed from 7 of its 8 bits."""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")  # headless: no display in CI or the devcontainer
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=140)
+    fig.patch.set_facecolor(SURFACE)
+    ax.set_facecolor(SURFACE)
+
+    # Fired cycles as a tick strip, not shaded spans: under heavy drive the
+    # neuron fires nearly every cycle and per-cycle spans would fill the axes.
+    # V resets on these, so a drop right after a tick is a reset, not decay.
+    fired_at = [s for s, f in zip(steps, out_spikes) if f]
+    if fired_at:
+        ax.eventplot(
+            fired_at,
+            lineoffsets=0.035,
+            linelengths=0.05,
+            linewidths=1.2,
+            colors=INK_MUTED,
+            alpha=0.55,
+            zorder=1,
+        )
+
+    # Steps, not a smooth line: the pin resolves V only to even codes, and
+    # interpolating between them would imply precision the readout doesn't have.
+    ax.step(
+        steps,
+        [v / 256 for v in v_centred],
+        where="post",
+        color=SERIES_V,
+        lw=1.8,
+        zorder=2,
+    )
+    ax.axhline(V_THRESHOLD / 256, color=INK_MUTED, lw=1, ls="--", alpha=0.6, zorder=1)
+
+    ax.set_title(title, color=INK, fontsize=11, loc="left")
+    ax.set_xlabel("clock cycle", color=INK_MUTED, fontsize=9)
+    ax.set_ylabel("V  (Q0.8, raw/256)", color=INK_MUTED, fontsize=9)
+    ax.set_ylim(0, 1.08)
+    ax.set_xlim(min(steps) - 0.5, max(steps) + 0.5)
+    ax.grid(axis="y", color=INK_MUTED, alpha=0.15, lw=0.8)
+    ax.set_axisbelow(True)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(INK_MUTED)
+        ax.spines[side].set_alpha(0.4)
+    ax.tick_params(colors=INK_MUTED, labelsize=8)
+
+    from matplotlib.lines import Line2D
+
+    ax.legend(
+        handles=[
+            Line2D([], [], color=SERIES_V, lw=1.8, label="V (7-bit readout, +½ LSB)"),
+            Line2D([], [], color=INK_MUTED, lw=1, ls="--", label="V_threshold"),
+            Line2D([], [], color=INK_MUTED, lw=1.2, alpha=0.55, label="fired (V reset)"),
+        ],
+        frameon=False,
+        fontsize=8,
+        labelcolor=INK_MUTED,
+        loc="upper right",
+    )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(path, facecolor=SURFACE)
+    plt.close(fig)
+    return path
 
 
 def plot_raster(steps, in_spikes, out_spikes, path, title):
@@ -201,7 +295,7 @@ async def test_single_spike(dut):
     """One spike, then free decay — the impulse response."""
     dut._log.info("Start: single spike, then watch the synaptic current decay")
 
-    steps, i_raw, spikes, _ = await run_trace(
+    steps, i_raw, spikes, *_ = await run_trace(
         dut, lambda step: t_spike <= step < t_spike + t_dur
     )
 
@@ -220,7 +314,7 @@ async def test_spike_every_step(dut):
     """Spike on every timestep — drives r to its saturating steady state."""
     dut._log.info("Start: spike every timestep, watch the synaptic current saturate")
 
-    steps, i_raw, spikes, _ = await run_trace(dut, lambda *_: True)
+    steps, i_raw, spikes, *_ = await run_trace(dut, lambda *_: True)
 
     save_plot(
         dut,
@@ -244,7 +338,7 @@ async def test_no_spikes(dut):
     """No input at all — r starts at 0 from reset and must stay there."""
     dut._log.info("Start: no spikes, synaptic current must stay at rest")
 
-    steps, i_raw, spikes, _ = await run_trace(dut, lambda *_: False)
+    steps, i_raw, spikes, *_ = await run_trace(dut, lambda *_: False)
 
     save_plot(
         dut,
@@ -270,24 +364,76 @@ async def test_neuron_spikes(dut):
     """
     dut._log.info("Start: unclamped, spike every timestep, expect the neuron to fire")
 
-    steps, i_raw, in_spikes, out_spikes = await run_trace(
+    steps, i_raw, in_spikes, out_spikes, v_centred = await run_trace(
         dut, lambda *_: True, voltage_clamp=int(False)
     )
 
-    png = plot_raster(
-        steps,
-        in_spikes,
-        out_spikes,
-        OUTPUT_DIR / "spike_raster.png",
-        "Spike raster — unclamped, pre-synaptic drive every cycle",
-    )
-    if png:
-        dut._log.info(f"wrote {png}")
-    else:
-        dut._log.warning("matplotlib not available - skipped raster")
+    for png, what in (
+        (
+            plot_raster(
+                steps,
+                in_spikes,
+                out_spikes,
+                OUTPUT_DIR / "spike_raster.png",
+                "Spike raster — unclamped, pre-synaptic drive every cycle",
+            ),
+            "raster",
+        ),
+        (
+            plot_v(
+                steps,
+                v_centred,
+                out_spikes,
+                OUTPUT_DIR / "v_trace_every_step.png",
+                "Membrane potential V — unclamped, drive every cycle "
+                "(7-bit readout, ±½ LSB)",
+            ),
+            "V trace",
+        ),
+    ):
+        if png:
+            dut._log.info(f"wrote {png}")
+        else:
+            dut._log.warning(f"matplotlib not available - skipped {what}")
 
     assert any(out_spikes), (
         f"neuron never spiked in {len(steps)} cycles "
         f"(max I_syn={max(i_raw)}, V never reached V_threshold)"
     )
     dut._log.info(f"neuron fired {sum(out_spikes)} times in {len(steps)} cycles")
+
+
+@cocotb.test()
+async def test_v_readout_burst(dut):
+    """Membrane potential over time under a burst, read back off uio_out[7:1].
+
+    Driving every cycle makes V degenerate — it crosses threshold, resets, and
+    is sampled at 0 almost every cycle. A finite burst lets V charge, fire, and
+    then decay, which is what the readout is actually for.
+    """
+    dut._log.info("Start: unclamped burst, trace the membrane potential")
+
+    steps, _, _, out_spikes, v_centred = await run_trace(
+        dut,
+        lambda step: t_spike <= step < t_spike + t_dur,
+        voltage_clamp=int(False),
+    )
+
+    png = plot_v(
+        steps,
+        v_centred,
+        out_spikes,
+        OUTPUT_DIR / "v_trace.png",
+        f"Membrane potential V — {t_dur}-cycle burst at t={t_spike} "
+        "(7-bit readout, ±½ LSB)",
+    )
+    if png:
+        dut._log.info(f"wrote {png}")
+    else:
+        dut._log.warning("matplotlib not available - skipped V trace")
+
+    # The readout drops V[0], so every sample must land on an even code.
+    # An odd one means the pin mapping slipped and the spike bit is bleeding in.
+    assert all((v - 0.5) % 2 == 0 for v in v_centred), (
+        f"V readout must be even codes + 1/2 LSB, saw {sorted(set(v_centred))[:8]}"
+    )
