@@ -89,3 +89,15 @@ than biasing every sample low.
 ## External hardware
 
 None.
+
+## References
+
+1. Destexhe, A., Mainen, Z. F., & Sejnowski, T. J. (1998). Kinetic models of
+   synaptic transmission. In C. Koch & I. Segev (Eds.), *Methods in Neuronal
+   Modeling* (2nd ed., pp. 1–25). MIT Press.
+   — the first-order kinetic scheme this design implements.
+
+2. Rotter, S., & Diesmann, M. (1999). Exact digital simulation of time-invariant
+   linear systems with applications to neuronal modeling. *Biological
+   Cybernetics*, 81(5–6), 381–402.
+   — the exact discretization used instead of forward Euler.
