@@ -1,0 +1,54 @@
+%% tt_um_sky26c datapath -- paste into an Obsidian note inside a ```mermaid fence.
+%% Same topology as docs/datapath.svg and figures/datapath.tex; keep in sync by hand.
+flowchart LR
+  subgraph SYN["Synaptic kinetics — exact dr/dt = α(1−r) − βr"]
+    direction LR
+    A1["sel e^−rate<br/><small>spike ? e^−(α+β) : e^−β</small>"]
+    A2["× 16×16<br/><small>r · mat_exp → Q0.32</small>"]
+    A3["round ≫16<br/><small>→ Q0.16</small>"]
+    A4["+ B_SPK<br/><small>spike branch only</small>"]
+    A5["saturate"]
+    A6[("REG r<br/><small>Q0.16 open fraction</small>")]
+    A1 --> A2 --> A3 --> A4 --> A5 --> A6
+    A6 -. "r (Q0.16)" .-> A2
+  end
+
+  subgraph CUR["Conductance & current — g = g_max·r"]
+    direction LR
+    B1["× g_max<br/><small>255</small>"]
+    B2["round ≫8<br/><small>→ g Q0.16</small>"]
+    B3["× signed<br/><small>g · driving force</small>"]
+    B4["round ≫16<br/><small>Q0.24 → Q0.8 signed</small>"]
+    B5["saturate<br/><small>negative → 0</small>"]
+    B1 --> B2 --> B3 --> B4 --> B5
+  end
+
+  subgraph MEM["Membrane & spike — integrate, fire, reset"]
+    direction LR
+    C1["E_rev − V<br/><small>clamp ? +256 : signed</small>"]
+    C2["× LEAK<br/><small>→ I_leak Q0.8</small>"]
+    C3["V + I_syn − I_leak<br/><small>13-bit signed</small>"]
+    C4["saturate<br/><small>0 … 255</small>"]
+    C5["> V_threshold<br/><small>192 (Q0.8)</small>"]
+    C6[("REG V, spike<br/><small>fire, reset next cycle</small>")]
+    C2 -- "I_leak" --> C3 --> C4 --> C5 --> C6
+    C6 -. "V (Q0.8)" .-> C1
+    C6 -. "V" .-> C2
+  end
+
+  P1(["ui_in[7]<br/>pre-synaptic spike"]) --> A1
+  P2(["ui_in[6]<br/>voltage clamp"]) --> C1
+
+  A5 -- "r_next" --> B1
+  C1 -- "E_rev − V (signed Q0.8)" --> B3
+  B4 -- "I_syn" --> C3
+
+  B5 --> O1(["uo_out[7:0]<br/>I_syn Q0.8"])
+  C6 --> O2(["uio_out[7:0]<br/>{V[7:1], spike}"])
+
+  classDef syn stroke:#2a78d6,stroke-width:1.5px;
+  classDef mem stroke:#c2570f,stroke-width:1.5px;
+  classDef pin stroke:#52514e,stroke-dasharray:3 2;
+  class A1,A2,A3,A4,A5,A6,B1,B2,B3,B4,B5 syn;
+  class C1,C2,C3,C4,C5,C6 mem;
+  class P1,P2,O1,O2 pin;
