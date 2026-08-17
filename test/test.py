@@ -394,8 +394,8 @@ async def test_neuron_spikes(dut):
     """Unclamped, under continuous drive, V must cross threshold and fire.
 
     This checks only that spiking happens at all — not when, and not the
-    resulting train. Timing depends on LEAK, V_threshold and the driving-force
-    format, all still in flux; asserting a train here would just be churn.
+    resulting train. Timing depends on LEAK, V_threshold and E_rev, all still
+    in flux; asserting a train here would just be churn.
     """
     dut._log.info("Start: unclamped, spike every timestep, expect the neuron to fire")
 

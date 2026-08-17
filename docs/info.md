@@ -24,8 +24,11 @@ with `alpha = 25/256`, `beta = 56/256`, `r_inf = alpha/(alpha+beta) = 25/81`.
 The three coefficients are stored as their exponentials in Q0.16, not as rates.
 
 Conductance is `g = g_max * r`, and the synaptic current is
-`I_syn = g * (V - E_rev)`. That current, less a linear leak term, integrates the
-membrane potential `V`. When `V` crosses `V_threshold` the neuron fires: the
+`I_syn = g * (E_rev - V)` -- signed, so it always pulls `V` toward the reversal
+potential rather than away from it. That current, less a linear leak term,
+integrates the membrane potential `V`. `E_rev` sits above `V_threshold`, making
+the synapse excitatory; putting it below threshold would make it inhibitory,
+and the signed path handles that without change. When `V` crosses `V_threshold` the neuron fires: the
 spike output asserts for one cycle, and `V` resets to zero on the *following*
 cycle rather than the same one. The crossing value is therefore observable on
 the V readout instead of being overwritten, and the neuron gets a one-cycle
@@ -47,11 +50,10 @@ unity, so `uo_out` reports the conductance waveform directly. This is a
 measurement mode for characterizing the kinetics, not a physiological clamp at a
 command potential.
 
-### Known limitation
+### Readout note
 
-Unclamped, the `V - E_rev` subtraction is unsigned: when `V < E_rev` it wraps to
-a large positive value instead of going negative. The membrane path needs a
-signed format before it models an inhibitory synapse correctly.
+`uo_out` is unsigned, so an inhibitory (negative) synaptic current reads as 0 on
+the pin. The membrane update itself uses the signed value.
 
 ## How to test
 

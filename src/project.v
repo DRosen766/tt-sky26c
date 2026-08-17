@@ -33,7 +33,7 @@ module tt_um_sky26c (
   localparam [15:0] B_SPK        = 16'd5486;   // Q0.16  r_inf*(1 - e^-(alpha+beta))
 
   localparam [7:0] g_max = 8'd255;
-  localparam [7:0] reverse_potential = 8'd32;
+  localparam [7:0] reverse_potential = 8'd255;  // Q0.8  excitatory; must sit above V_threshold
   localparam [7:0] V_threshold = 8'd192;  // Q0.8  threshold for spike output
   wire pre_synaptic_spike = ui_in[7];
   wire voltage_clamp = ui_in[6];  // 1 = hold V, so I_syn reports g directly
@@ -57,28 +57,33 @@ module tt_um_sky26c (
   wire [23:0] g_rnd = g_q24 + 24'd128;
   wire [15:0] g     = g_rnd[23:8];  // Q0.16 conductance
 
-  // V - E_rev, or unity (256 in Q0.8) under clamp so I_syn = g.
-  // Unclamped this subtraction is UNSIGNED: V < E_rev wraps positive.
-  wire [8:0] driving_force = voltage_clamp ? 9'd256
-                                           : ({1'b0, V} - {1'b0, reverse_potential});
+  // Driving force (E_rev - V), signed Q0.8: positive below the reversal
+  // potential, negative above it, so the current always pulls V TOWARD E_rev.
+  // Under clamp it is unity (256 in Q0.8) and I_syn reports g directly.
+  wire signed [9:0] driving_force =
+      voltage_clamp ? 10'sd256
+                    : $signed({2'b00, reverse_potential}) - $signed({2'b00, V});
 
-  wire [24:0] I_syn_q24  = g * driving_force;
-  wire [24:0] I_syn_rnd  = I_syn_q24 + 25'd128;
-  wire [16:0] I_syn_full = I_syn_rnd[24:8];
-  wire [15:0] I_syn      = I_syn_full[16] ? Q016_MAX : I_syn_full[15:0];  // Q0.16
+  // Q0.16 * Q0.8 -> Q0.24, rounded and sliced straight to Q0.8.
+  wire signed [26:0] I_syn_q24 = $signed({1'b0, g}) * driving_force;
+  wire signed [26:0] I_syn_rnd = I_syn_q24 + 27'sd32768;
+  wire signed [10:0] I_syn_q8  = I_syn_rnd[26:16];
 
-  wire [7:0] I_syn_q8 = I_syn[15:8];  // top byte of Q0.16 is the same number in Q0.8
+  // The pin is unsigned: an inhibitory (negative) current reads as 0.
+  wire [7:0] I_syn_pin = I_syn_q8[10]                  ? 8'h00
+                       : (I_syn_q8 > $signed(11'd255)) ? Q08_MAX
+                       : I_syn_q8[7:0];
 
-  localparam [7:0] LEAK = 8'd26;  // Q0.8  leak conductance
+  localparam [7:0] LEAK = 8'd16;  // Q0.8  leak conductance
   wire [15:0] I_leak_q16 = V * LEAK + 16'd128;
   wire [ 7:0] I_leak     = I_leak_q16[15:8];
 
   // V + I_syn - I_leak, saturating at both ends.
-  wire signed [10:0] v_sum = $signed({3'b000, V})
-                           + $signed({3'b000, I_syn_q8})
-                           - $signed({3'b000, I_leak});
-  wire [7:0] V_next = v_sum[10]                    ? 8'h00
-                    : (v_sum > $signed(11'd255))   ? Q08_MAX
+  wire signed [12:0] v_sum = $signed({5'd0, V})
+                           + $signed({{2{I_syn_q8[10]}}, I_syn_q8})
+                           - $signed({5'd0, I_leak});
+  wire [7:0] V_next = v_sum[12]                    ? 8'h00
+                    : (v_sum > $signed(13'd255))   ? Q08_MAX
                     : v_sum[7:0];
 
 
@@ -113,12 +118,12 @@ module tt_um_sky26c (
     $strobe("t=%0t clamp=%0d spike=%0d r=%0d g=%0d uo_out=%h", $time, voltage_clamp, pre_synaptic_spike, r, g, uo_out);
 `endif
   end
-  assign uo_out = I_syn_q8;  // synaptic current, Q0.8
+  assign uo_out = I_syn_pin;  // synaptic current, Q0.8
   assign uio_out = {V[7:1],spike};
 
   // Unused inputs and the deliberate Q0.16 -> Q0.8 discards.
   wire _unused = &{ena, uio_in, ui_in[5:0], r_mul_rnd[15:0], g_rnd[7:0],
-                   I_syn_rnd[7:0], I_syn[7:0], I_leak_q16[7:0],
+                   I_syn_rnd[15:0], I_leak_q16[7:0], Q016_MAX,
                    1'b0};
 
 endmodule
