@@ -9,6 +9,8 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
+![Datapath block diagram](datapath.svg)
+
 A discrete-time first-order kinetic (Markovian) synapse driving a leaky
 integrate-and-fire membrane.
 
