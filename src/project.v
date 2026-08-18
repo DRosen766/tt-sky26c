@@ -33,7 +33,6 @@ module tt_um_sky26c (
   localparam [15:0] MAT_EXP_NSPK_DEFAULT = 16'd52659;  // Q0.16  e^-beta
   localparam [15:0] B_SPK_DEFAULT        = 16'd5486;   // Q0.16  r_inf*(1 - e^-(alpha+beta))
 
-  localparam [7:0] g_max = 8'd255;
   localparam [7:0] reverse_potential = 8'd255;  // Q0.8  excitatory; must sit above V_threshold
   localparam [7:0] V_threshold = 8'd192;  // Q0.8  threshold for spike output
   wire pre_synaptic_spike = ui_in[7];
@@ -78,7 +77,14 @@ module tt_um_sky26c (
   wire [16:0] r_sum  = {1'b0, r_decay} + (pre_synaptic_spike ? {1'b0, b_spk} : 17'd0);
   wire [15:0] r_next = r_sum[16] ? Q016_MAX : r_sum[15:0];
 
-  wire [23:0] g_q24 = r_next * g_max;
+  // Peak conductance is full scale, so g = r*255/256, i.e. x*255 == (x<<8) - x.
+  // Written as the shift-subtract rather than as `x * 255`: Yosys strength-
+  // reduces power-of-two constants but not this one, and as a multiply it
+  // synthesises a full array -- 463 cells, which is what pushed the 1x2 tile
+  // over 100% placement utilization once the coefficients became runtime
+  // values. Bit-identical to the multiply, and 255 is not a knob worth a
+  // localparam of its own: any other peak would reintroduce the array.
+  wire [23:0] g_q24 = {r_next, 8'h00} - {8'h00, r_next};
   wire [23:0] g_rnd = g_q24 + 24'd128;
   wire [15:0] g     = g_rnd[23:8];  // Q0.16 conductance
 
