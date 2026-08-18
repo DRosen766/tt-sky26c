@@ -1,42 +1,33 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# Kinetic synapse + LIF neuron — TTSKY26c
 
-- [Read the documentation for project](docs/info.md)
+A discrete-time first-order kinetic (Markovian) synapse driving a leaky
+integrate-and-fire membrane, hardened for SKY130 via Tiny Tapeout. 1x2 tiles.
 
-## What is Tiny Tapeout?
+- [Datasheet](docs/info.md) — model, pinout, load port, how to test
+- [Testbench](test/README.md) — cocotb + Icarus
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+## Layout
 
-To learn more and get started, visit https://tinytapeout.com.
+- `src/project.v` — the design; top module `tt_um_sky26c`
+- `src/config.json` — LibreLane config
+- `info.yaml` — metadata, pinout, tiles, source files
+- `test/` — cocotb testbench and plots
 
-## Set up your Verilog project
+Adding a source file means editing both `info.yaml:source_files` and
+`PROJECT_SOURCES` in `test/Makefile`.
 
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
+## Run
 
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
+```sh
+cd test && make -B
+```
 
-## Enable GitHub actions to build the results page
+`make` exits 0 even when assertions fail — grep `results.xml` for `failure`.
 
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
+## Tiny Tapeout
 
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+- [FAQ](https://tinytapeout.com/faq/) · [Digital design lessons](https://tinytapeout.com/digital_design/) · [Discord](https://tinytapeout.com/discord)
+- [Harden locally](https://www.tinytapeout.com/guides/local-hardening/)
+- [Submit to a shuttle](https://app.tinytapeout.com/)
