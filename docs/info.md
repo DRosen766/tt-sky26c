@@ -42,8 +42,23 @@ never a divider, and each stage saturates instead of wrapping. `r` carries the
 extra width because a slow tau otherwise decays by less than half an LSB of
 Q0.8, which would latch the state instead of relaxing it.
 
-Coefficients are compile-time constants for now; they become shift-in registers
-once the load path exists.
+### Coefficient load port
+
+All three kinetic coefficients — `MAT_EXP_SPK`, `MAT_EXP_NSPK` and `B_SPK` —
+live in a 48-bit shift register rather than in constants. There is no room in
+the pin budget to stream 16 bits per cycle, so they are clocked in one bit at a
+time on `ui[0]` (`cfg_din`) while `ui[1]` (`cfg_shift`) is high, MSB first:
+`MAT_EXP_SPK`, then `MAT_EXP_NSPK`, then `B_SPK`, 48 cycles in total.
+
+While `cfg_shift` is high the neuron state (`r`, `V`, `spike`) is frozen, so a
+load takes no simulated time from the trace either side of it and a
+partially-shifted word is never applied to a live update.
+
+Reset clears the chain to zero, and an all-zero field selects the hand-computed
+default for that coefficient, independently of the other two. Zero is not a
+usable value for any of them — a zero `MAT_EXP` collapses `r` every cycle, and a
+zero `B_SPK` makes the spike input inert — so spending it as the "never loaded"
+sentinel costs nothing.
 
 ### Voltage clamp
 
@@ -71,12 +86,17 @@ Note that `make` exits 0 even when assertions fail — check `results.xml` for
 
 The suite covers the impulse response (one spike, then free decay), continuous
 drive to the saturating steady state, the rest condition (no input, current must
-stay at zero), and unclamped firing. It writes current traces and a spike raster
-to `test/output/`.
+stay at zero), and unclamped firing. It also checks the load port both ways:
+shifting in the default coefficients must reproduce the unconfigured trace
+sample for sample, and perturbing each of the three fields in turn must move the
+part of the waveform that field governs. It writes current traces, a spike
+raster, and side-by-side comparisons of the two shift-in runs — one of `I_syn`,
+one of `V` — to `test/output/`.
 
 To drive the design directly: hold `ui[7]` high for the cycles a pre-synaptic
 spike is present, and set `ui[6]` to choose clamped (conductance readout) or
-unclamped (full membrane dynamics) mode. All inputs arrive on `ui_in`, so the
+unclamped (full membrane dynamics) mode. Leave `ui[1:0]` at zero to run on the
+default coefficients. All inputs arrive on `ui_in`, so the
 bidirectional bus is driven as output at all times.
 
 `uo_out` carries the synaptic current in Q0.8. `uio_out` carries
