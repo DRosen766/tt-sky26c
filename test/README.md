@@ -1,47 +1,43 @@
-# Sample testbench for a Tiny Tapeout project
+# Testbench
 
-This is a sample testbench for a Tiny Tapeout project. It uses [cocotb](https://docs.cocotb.org/en/stable/) to drive the DUT and check the outputs.
-See below to get started or for more information, check the [website](https://tinytapeout.com/hdl/testing/).
+cocotb + Icarus. `tb.v` instantiates `tt_um_sky26c` and exposes the pin buses.
 
-## Setting up
-
-1. Edit [Makefile](Makefile) and modify `PROJECT_SOURCES` to point to your Verilog files.
-2. Edit [tb.v](tb.v) and replace `tt_um_example` with your module name.
-
-## How to run
-
-To run the RTL simulation:
+## Run
 
 ```sh
-make -B
+make -B                  # RTL sim -> tb.fst, results.xml
+make -B FST=             # VCD instead (also edit tb.v's $dumpfile)
+make clean
 ```
 
-To run gatelevel simulation, first harden your project and copy `../runs/wokwi/results/final/verilog/gl/{your_module_name}.v` to `gate_level_netlist.v`.
+Select tests:
 
-Then run:
+```sh
+COCOTB_TESTCASE=test_single_spike make -B
+COCOTB_TEST_MODULES=test,test_kinetics make -B
+```
+
+`make` exits 0 even when assertions fail — check `results.xml`, not `$?`.
+
+## Gate level
+
+Harden first, then copy `../runs/wokwi/results/final/verilog/gl/tt_um_sky26c.v`
+to `gate_level_netlist.v`:
 
 ```sh
 make -B GATES=yes
 ```
 
-If you wish to save the waveform in VCD format instead of FST format, edit tb.v to use `$dumpfile("tb.vcd");` and then run:
-
-```sh
-make -B FST=
-```
-
-This will generate `tb.vcd` instead of `tb.fst`.
-
-## How to view the waveform file
-
-Using GTKWave
+## Waveforms
 
 ```sh
 gtkwave tb.fst tb.gtkw
+surfer tb.fst            # or: make surf
 ```
 
-Using Surfer
+## Notes
 
-```sh
-surfer tb.fst
-```
+- cocotb 2.x API: `Clock(dut.clk, 10, unit="us")`, `COCOTB_TEST_MODULES` /
+  `COCOTB_TESTCASE` (not `MODULE` / `TESTCASE`)
+- deps pinned in `requirements.txt`
+- plots are written to `output/` (gitignored)
